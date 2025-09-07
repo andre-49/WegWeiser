@@ -153,7 +153,6 @@ function GraphView() {
         height: "1200px",
         width: "100vw",
         border: "2px solid #333",
-        background: "#fafafa",
       }}
     />
   );
