@@ -1,6 +1,8 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Graph from "graphology";
 import { Sigma } from "sigma";
+import SideBar from "../ui/SideBar";
+import OccupationDetails from "../ui/OccupationDetails";
 
 const OCCUPATION_TITLES = [
   "pet and pet food shop manager",
@@ -21,6 +23,8 @@ function GraphView() {
   const graphRef = useRef(null);
   const skillsVisibleRef = useRef(false);
   const expandedOccupationRef = useRef(null);
+
+  const [selectedOccupation, setSelectedOccupation] = useState(null);
 
   // Base sizes
   const baseSizes = {
@@ -170,6 +174,8 @@ function GraphView() {
             const attrs = g.getNodeAttributes(node);
             if (attrs.customType !== "occupation") return;
 
+            setSelectedOccupation(attrs); // NEW: set selected occupation
+
             if (expandedOccupationRef.current === node) {
               collapseAllSkills();
               const r = camera.getState().ratio;
@@ -280,30 +286,28 @@ function GraphView() {
     };
   }, []);
 
+  console.log("Selected occupation:", selectedOccupation);
+
   return (
     <div style={{ position: "relative" }}>
-      <div
-        style={{
-          padding: "10px",
-          background: "#f0f0f0",
-          borderBottom: "1px solid #ccc",
-          fontSize: "14px",
-          color: "#444",
-        }}
-      >
-        <strong>Interactive Network Graph</strong> — Zoom in to see occupation
-        names, zoom out to hide them. Click an occupation to toggle its skills
-        (auto-zoom enabled).
-      </div>
-
       <div
         ref={containerRef}
         style={{
           height: "100vh",
           width: "100vw",
           background: "#fafafa",
+          position: "relative",
         }}
-      />
+      >
+        {selectedOccupation && (
+          <SideBar setSelectedOccupation={setSelectedOccupation}>
+            <OccupationDetails
+              selectedOccupation={selectedOccupation}
+              setSelectedOccupation={setSelectedOccupation}
+            />
+          </SideBar>
+        )}
+      </div>
 
       <div
         style={{
