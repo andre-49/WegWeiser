@@ -1,13 +1,13 @@
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import Graph from "graphology";
 import { Sigma } from "sigma";
 
-const OCCUPATION_GROUPS = [
+const OCCUPATION_TITLES = [
   "pet and pet food shop manager",
   "Shopping for own household and family members",
   "Unpaid community- and organization-based volunteering",
   "Food and meals management and preparation",
-  "Cleaning and maintaining of own dwelling and surroundings",
+  // "Cleaning and maintaining of own dwelling and surroundings",
   "Construction managers",
   "Health services managers",
   "Software developers",
@@ -17,128 +17,263 @@ const OCCUPATION_GROUPS = [
 function GraphView() {
   const containerRef = useRef(null);
   const sigmaInstanceRef = useRef(null);
+  const dataRef = useRef({ nodes: [], edges: [] });
+  const graphRef = useRef(null);
+  const skillsVisibleRef = useRef(false);
+  const expandedOccupationRef = useRef(null);
+
+  // Base sizes
+  const baseSizes = {
+    occupation: 18,
+    skill: 7,
+  };
+
+  // Label behavior: show occupation labels when zoomed IN (ratio <= threshold)
+  const OCC_LABEL_SHOW_RATIO_THRESHOLD = 1.1;
+
+  const fitToScreen = () => {
+    const s = sigmaInstanceRef.current;
+    if (!s) return;
+    s.getCamera().setState({ x: 0.5, y: 0.5, ratio: 1 });
+    s.refresh();
+  };
+
+  const toggleOccupationLabels = (zoomRatio) => {
+    const s = sigmaInstanceRef.current;
+    const g = graphRef.current;
+    if (!s || !g) return;
+
+    const show = zoomRatio <= OCC_LABEL_SHOW_RATIO_THRESHOLD;
+
+    g.forEachNode((id, attrs) => {
+      if (attrs.customType !== "occupation") return;
+
+      if (typeof attrs.originalLabel === "undefined") {
+        g.setNodeAttribute(id, "originalLabel", attrs.label || "");
+      }
+
+      const shouldBe = show ? attrs.originalLabel || "" : "";
+      if (attrs.label !== shouldBe) {
+        g.setNodeAttribute(id, "label", shouldBe);
+      }
+    });
+
+    s.refresh();
+  };
+
+  const updateNodeSizes = (zoomRatio) => {
+    const g = graphRef.current;
+    const s = sigmaInstanceRef.current;
+    if (!g) return;
+
+    g.forEachNode((nodeId, attributes) => {
+      const nodeType = attributes.customType;
+      let newSize = attributes.size;
+
+      switch (nodeType) {
+        case "occupation":
+          newSize = skillsVisibleRef.current
+            ? baseSizes.occupation
+            : Math.max(baseSizes.occupation * (1 / zoomRatio), 4);
+          break;
+        case "skill":
+          newSize = baseSizes.skill * Math.pow(zoomRatio, 0.3);
+          break;
+        default:
+          break;
+      }
+
+      g.setNodeAttribute(nodeId, "size", newSize);
+    });
+
+    if (s) s.refresh();
+  };
+
+  const collapseAllSkills = () => {
+    const g = graphRef.current;
+    if (!g) return;
+
+    const toDrop = [];
+    g.forEachNode((id, attrs) => {
+      if (attrs.customType === "skill") toDrop.push(id);
+    });
+    toDrop.forEach((id) => g.dropNode(id));
+    skillsVisibleRef.current = false;
+    expandedOccupationRef.current = null;
+  };
 
   useEffect(() => {
     let isMounted = true;
 
-    async function fetchData() {
+    async function bootstrap() {
       if (sigmaInstanceRef.current) {
         sigmaInstanceRef.current.kill();
         sigmaInstanceRef.current = null;
       }
 
-      // Fetch all nodes and edges as before
-      const nodesRes = await fetch("http://127.0.0.1:8001/nodes").then((res) =>
-        res.json()
-      );
-      const edgesRes = await fetch("http://127.0.0.1:8001/edges").then((res) =>
-        res.json()
-      );
+      try {
+        const [nodesRes, edgesRes] = await Promise.all([
+          fetch("http://127.0.0.1:8001/nodes").then((r) => r.json()),
+          fetch("http://127.0.0.1:8001/edges").then((r) => r.json()),
+        ]);
 
-      const graph = new Graph();
+        dataRef.current = { nodes: nodesRes.nodes, edges: edgesRes.edges };
+        const g = new Graph();
 
-      // Filter group nodes by OCCUPATION_GROUPS
-      const groupNodes = nodesRes.nodes.filter(
-        (n) => n.type === "group" && OCCUPATION_GROUPS.includes(n.title)
-      );
-      const groupIds = new Set(groupNodes.map((n) => n.id));
+        // Use the same logic as before but skip adding group nodes
+        const groupNodes = nodesRes.nodes.filter(
+          (n) => n.type === "group" && OCCUPATION_TITLES.includes(n.title)
+        );
+        
+        const groupIds = new Set(groupNodes.map((n) => n.id));
 
-      // Find all occupations connected to these groups
-      const occEdges = edgesRes.edges.filter(
-        (e) => e.type === "group_occupation" && groupIds.has(e.source)
-      );
-      const occupationIds = new Set(occEdges.map((e) => e.target));
-      const occupationNodes = nodesRes.nodes.filter((n) =>
-        occupationIds.has(n.id)
-      );
+        const occEdges = edgesRes.edges.filter(
+          (e) => e.type === "group_occupation" && groupIds.has(e.source)
+        );
+        const occupationIds = new Set(occEdges.map((e) => e.target));
+        const occupationNodes = nodesRes.nodes.filter((n) =>
+          occupationIds.has(n.id)
+        );
 
-      // Find all skills connected to these occupations
-      const occSkillEdges = edgesRes.edges.filter(
-        (e) => e.type === "occ_skill" && occupationIds.has(e.source)
-      );
-      const skillIds = new Set(occSkillEdges.map((e) => e.target));
-      const skillNodes = nodesRes.nodes.filter((n) => skillIds.has(n.id));
-
-      // Add group nodes
-      groupNodes.forEach((node) => {
-        graph.addNode(node.id, {
-          label: node.title,
-          type: "circle",
-          customType: node.type,
-          x: Math.random() * 1000,
-          y: Math.random() * 1000,
-          size: 14,
-          color: "#0074D9",
-        });
-      });
-
-      // Add occupation nodes
-      occupationNodes.forEach((node) => {
-        graph.addNode(node.id, {
-          label: node.title,
-          type: "circle",
-          customType: node.type,
-          x: Math.random() * 1000,
-          y: Math.random() * 1000,
-          size: 10,
-          color: "#2ECC40",
-        });
-      });
-
-      // Add skill nodes
-      skillNodes.forEach((node) => {
-        graph.addNode(node.id, {
-          label: node.title,
-          type: "circle",
-          customType: node.type,
-          x: Math.random() * 1000,
-          y: Math.random() * 1000,
-          size: 7,
-          color: "#FF4136",
-        });
-      });
-
-      // Add group-occupation edges
-      occEdges.forEach((edge) => {
-        graph.addEdge(edge.source, edge.target, {
-          type: "line",
-          label: edge.type,
-          color: "#0074D9",
-        });
-      });
-
-      // Add occupation-skill edges
-      occSkillEdges.forEach((edge) => {
-        graph.addEdge(edge.source, edge.target, {
-          type: "line",
-          label: edge.type,
-          color: "#2ECC40",
-        });
-      });
-
-      // Add skill-skill edges between selected skills
-      edgesRes.edges
-        .filter(
-          (e) =>
-            e.type === "skill_skill" &&
-            skillIds.has(e.source) &&
-            skillIds.has(e.target)
-        )
-        .forEach((edge) => {
-          graph.addEdge(edge.source, edge.target, {
-            type: "line",
-            label: edge.type,
-            color: "#FF4136",
+        // Add occupation nodes
+        occupationNodes.forEach((node) => {
+          g.addNode(node.id, {
+            label: node.title,
+            originalLabel: node.title,
+            customType: "occupation",
+            x: Math.random() * 1000,
+            y: Math.random() * 1000,
+            size: baseSizes.occupation,
+            color: "#2ECC40",
           });
         });
 
-      // Initialize Sigma
-      if (containerRef.current && isMounted) {
-        sigmaInstanceRef.current = new Sigma(graph, containerRef.current);
+        if (containerRef.current && isMounted) {
+          const s = new Sigma(g, containerRef.current, {
+            stagePadding: 8,
+            hideLabelsOnMove: false,
+            renderLabels: true,
+            labelRenderedSizeThreshold: 4,
+          });
+
+          sigmaInstanceRef.current = s;
+          graphRef.current = g;
+
+          const camera = s.getCamera();
+          const onCameraUpdated = (state) => {
+            const ratio = state.ratio;
+            updateNodeSizes(ratio);
+            toggleOccupationLabels(ratio);
+          };
+          camera.on("updated", onCameraUpdated);
+
+          s.on("clickNode", ({ node }) => {
+            const attrs = g.getNodeAttributes(node);
+            if (attrs.customType !== "occupation") return;
+
+            if (expandedOccupationRef.current === node) {
+              collapseAllSkills();
+              const r = camera.getState().ratio;
+              updateNodeSizes(r);
+              toggleOccupationLabels(r);
+              return;
+            }
+
+            collapseAllSkills();
+
+            const { nodes, edges } = dataRef.current;
+            const occSkillEdges = edges.filter(
+              (e) => e.type === "occ_skill" && e.source === node
+            );
+
+            occSkillEdges.forEach((edge, i) => {
+              if (!g.hasNode(edge.target)) {
+                const skillNode = nodes.find((n) => n.id === edge.target);
+                if (!skillNode) return;
+
+                g.addNode(skillNode.id, {
+                  label: skillNode.title,
+                  originalLabel: skillNode.title,
+                  customType: "skill",
+                  size: baseSizes.skill,
+                  color: "#FF4136",
+                  x: attrs.x + Math.random() * 50 - 25,
+                  y: attrs.y + Math.random() * 50 - 25,
+                });
+
+                const ek = `${edge.source}->${edge.target}-skill-${i}`;
+                g.addEdgeWithKey(ek, edge.source, edge.target, {
+                  type: "line",
+                  label: edge.type,
+                  color: "#FF4136",
+                });
+              }
+            });
+
+            skillsVisibleRef.current = true;
+            expandedOccupationRef.current = node;
+
+            // Focus zoom specifically on the skills area, not the occupation
+            const skillNodeIds = occSkillEdges.map((e) => e.target);
+
+            if (skillNodeIds.length > 0) {
+              // Zoom to focus on skills only
+              const skillsBbox = g.getBBox(skillNodeIds);
+              const padding = 80; // Padding around skills
+
+              camera.animate(
+                {
+                  x: (skillsBbox.x1 + skillsBbox.x2) / 2,
+                  y: (skillsBbox.y1 + skillsBbox.y2) / 2,
+                  ratio: Math.min(
+                    (skillsBbox.x2 - skillsBbox.x1 + padding) /
+                      containerRef.current.offsetWidth,
+                    (skillsBbox.y2 - skillsBbox.y1 + padding) /
+                      containerRef.current.offsetHeight,
+                    0.1 // Higher zoom level to focus on skills
+                  ),
+                },
+                { duration: 800, easing: "quadInOut" }
+              );
+            } else {
+              // If no skills, just zoom to the occupation
+              camera.animate(
+                {
+                  x: attrs.x,
+                  y: attrs.y,
+                  ratio: 0.2,
+                },
+                { duration: 800, easing: "quadInOut" }
+              );
+            }
+
+            const r = camera.getState().ratio;
+            updateNodeSizes(r);
+            toggleOccupationLabels(r);
+          });
+
+          requestAnimationFrame(() => {
+            fitToScreen();
+            const r = camera.getState().ratio;
+            toggleOccupationLabels(r);
+          });
+
+          const ro = new ResizeObserver(() => {
+            requestAnimationFrame(() => fitToScreen());
+          });
+          ro.observe(containerRef.current);
+
+          return () => {
+            ro.disconnect();
+            camera.off("updated", onCameraUpdated);
+          };
+        }
+      } catch (e) {
+        console.error("Error fetching data:", e);
       }
     }
 
-    fetchData();
+    bootstrap();
 
     return () => {
       isMounted = false;
@@ -147,14 +282,55 @@ function GraphView() {
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        height: "1200px",
-        width: "100vw",
-        border: "2px solid #333",
-      }}
-    />
+    <div style={{ position: "relative" }}>
+      <div
+        style={{
+          padding: "10px",
+          background: "#f0f0f0",
+          borderBottom: "1px solid #ccc",
+          fontSize: "14px",
+          color: "#444",
+        }}
+      >
+        <strong>Interactive Network Graph</strong> — Zoom in to see occupation
+        names, zoom out to hide them. Click an occupation to toggle its skills
+        (auto-zoom enabled).
+      </div>
+
+      <div
+        ref={containerRef}
+        style={{
+          height: "100vh",
+          width: "100vw",
+          background: "#fafafa",
+        }}
+      />
+
+      <div
+        style={{
+          position: "fixed",
+          right: 16,
+          bottom: 16,
+          display: "flex",
+          gap: 8,
+          zIndex: 10,
+        }}
+      >
+        <button
+          onClick={fitToScreen}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #ccc",
+            background: "#fff",
+            cursor: "pointer",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+          }}
+        >
+          Reset view
+        </button>
+      </div>
+    </div>
   );
 }
 
