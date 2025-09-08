@@ -60,17 +60,17 @@ function GraphView() {
       const skillNodes = nodesRes.nodes.filter((n) => skillIds.has(n.id));
 
       // Add group nodes
-      groupNodes.forEach((node) => {
-        graph.addNode(node.id, {
-          label: node.title,
-          type: "circle",
-          customType: node.type,
-          x: Math.random() * 1000,
-          y: Math.random() * 1000,
-          size: 14,
-          color: "#0074D9",
-        });
-      });
+      // groupNodes.forEach((node) => {
+      //   graph.addNode(node.id, {
+      //     label: node.title,
+      //     type: "circle",
+      //     customType: node.type,
+      //     x: Math.random() * 1000,
+      //     y: Math.random() * 1000,
+      //     size: 14,
+      //     color: "#0074D9",
+      //   });
+      // });
 
       // Add occupation nodes
       occupationNodes.forEach((node) => {
@@ -99,13 +99,13 @@ function GraphView() {
       });
 
       // Add group-occupation edges
-      occEdges.forEach((edge) => {
-        graph.addEdge(edge.source, edge.target, {
-          type: "line",
-          label: edge.type,
-          color: "#0074D9",
-        });
-      });
+      // occEdges.forEach((edge) => {
+      //   graph.addEdge(edge.source, edge.target, {
+      //     type: "line",
+      //     label: edge.type,
+      //     color: "#0074D9",
+      //   });
+      // });
 
       // Add occupation-skill edges
       occSkillEdges.forEach((edge) => {
