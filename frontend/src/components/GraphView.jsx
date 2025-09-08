@@ -2,12 +2,12 @@ import React, { useEffect, useRef } from "react";
 import Graph from "graphology";
 import { Sigma } from "sigma";
 
-const OCCUPATION_GROUPS = [
+const OCCUPATION_TITLES = [
   "pet and pet food shop manager",
   "Shopping for own household and family members",
   "Unpaid community- and organization-based volunteering",
   "Food and meals management and preparation",
-  "Cleaning and maintaining of own dwelling and surroundings",
+  // "Cleaning and maintaining of own dwelling and surroundings",
   "Construction managers",
   "Health services managers",
   "Software developers",
@@ -24,7 +24,6 @@ function GraphView() {
 
   // Base sizes
   const baseSizes = {
-    group: 20,
     occupation: 18,
     skill: 7,
   };
@@ -35,7 +34,6 @@ function GraphView() {
   const fitToScreen = () => {
     const s = sigmaInstanceRef.current;
     if (!s) return;
-    // Center & fit: Sigma uses a normalized [0..1] space; ratio=1 fits graph into viewport
     s.getCamera().setState({ x: 0.5, y: 0.5, ratio: 1 });
     s.refresh();
   };
@@ -50,7 +48,6 @@ function GraphView() {
     g.forEachNode((id, attrs) => {
       if (attrs.customType !== "occupation") return;
 
-      // Ensure originalLabel is recorded once
       if (typeof attrs.originalLabel === "undefined") {
         g.setNodeAttribute(id, "originalLabel", attrs.label || "");
       }
@@ -74,18 +71,12 @@ function GraphView() {
       let newSize = attributes.size;
 
       switch (nodeType) {
-        case "group":
-          // Smaller as you zoom IN
-          newSize = baseSizes.group * Math.sqrt(zoomRatio);
-          break;
         case "occupation":
-          // If skills are visible, keep occupation size steady; else, grow as you zoom IN
           newSize = skillsVisibleRef.current
             ? baseSizes.occupation
             : Math.max(baseSizes.occupation * (1 / zoomRatio), 4);
           break;
         case "skill":
-          // Slight response to zoom
           newSize = baseSizes.skill * Math.pow(zoomRatio, 0.3);
           break;
         default:
@@ -115,30 +106,26 @@ function GraphView() {
     let isMounted = true;
 
     async function bootstrap() {
-      // Kill previous instance if hot-reloading
       if (sigmaInstanceRef.current) {
         sigmaInstanceRef.current.kill();
         sigmaInstanceRef.current = null;
       }
 
       try {
-        // Fetch all nodes & edges
         const [nodesRes, edgesRes] = await Promise.all([
           fetch("http://127.0.0.1:8001/nodes").then((r) => r.json()),
           fetch("http://127.0.0.1:8001/edges").then((r) => r.json()),
         ]);
 
         dataRef.current = { nodes: nodesRes.nodes, edges: edgesRes.edges };
-
         const g = new Graph();
 
-        // Filter group nodes by OCCUPATION_GROUPS
+        // Use the same logic as before but skip adding group nodes
         const groupNodes = nodesRes.nodes.filter(
-          (n) => n.type === "group" && OCCUPATION_GROUPS.includes(n.title)
+          (n) => n.type === "group" && OCCUPATION_TITLES.includes(n.title)
         );
         const groupIds = new Set(groupNodes.map((n) => n.id));
 
-        // Occupations linked to those groups
         const occEdges = edgesRes.edges.filter(
           (e) => e.type === "group_occupation" && groupIds.has(e.source)
         );
@@ -147,20 +134,7 @@ function GraphView() {
           occupationIds.has(n.id)
         );
 
-        // Add groups
-        groupNodes.forEach((node) => {
-          g.addNode(node.id, {
-            label: node.title,
-            originalLabel: node.title,
-            customType: "group",
-            x: Math.random() * 1000,
-            y: Math.random() * 1000,
-            size: baseSizes.group,
-            color: "#0074D9",
-          });
-        });
-
-        // Add occupations
+        // Add occupation nodes
         occupationNodes.forEach((node) => {
           g.addNode(node.id, {
             label: node.title,
@@ -173,31 +147,17 @@ function GraphView() {
           });
         });
 
-        // Add group-occupation edges
-        occEdges.forEach((edge, i) => {
-          const key = `${edge.source}->${edge.target}-${i}`;
-          if (!g.hasEdge(key)) {
-            g.addEdgeWithKey(key, edge.source, edge.target, {
-              type: "line",
-              label: edge.type,
-              color: "#0074D9",
-            });
-          }
-        });
-
         if (containerRef.current && isMounted) {
-          // Initialize Sigma with small stagePadding; keep labels on (we manage visibility ourselves)
           const s = new Sigma(g, containerRef.current, {
             stagePadding: 8,
             hideLabelsOnMove: false,
             renderLabels: true,
-            labelRenderedSizeThreshold: 4, // keep permissive; our toggle governs visibility
+            labelRenderedSizeThreshold: 4,
           });
 
           sigmaInstanceRef.current = s;
           graphRef.current = g;
 
-          // Camera events: size + label updates
           const camera = s.getCamera();
           const onCameraUpdated = (state) => {
             const ratio = state.ratio;
@@ -206,22 +166,18 @@ function GraphView() {
           };
           camera.on("updated", onCameraUpdated);
 
-          // Node click: expand/collapse skills for one occupation at a time
           s.on("clickNode", ({ node }) => {
             const attrs = g.getNodeAttributes(node);
             if (attrs.customType !== "occupation") return;
 
-            // Toggle: if same occupation clicked, collapse
             if (expandedOccupationRef.current === node) {
               collapseAllSkills();
-              // Update sizes/labels for current zoom
               const r = camera.getState().ratio;
               updateNodeSizes(r);
               toggleOccupationLabels(r);
               return;
             }
 
-            // New occupation: collapse any previous skills then add new ones
             collapseAllSkills();
 
             const { nodes, edges } = dataRef.current;
@@ -256,26 +212,56 @@ function GraphView() {
             skillsVisibleRef.current = true;
             expandedOccupationRef.current = node;
 
+            // Focus zoom specifically on the skills area, not the occupation
+            const skillNodeIds = occSkillEdges.map((e) => e.target);
+
+            if (skillNodeIds.length > 0) {
+              // Zoom to focus on skills only
+              const skillsBbox = g.getBBox(skillNodeIds);
+              const padding = 80; // Padding around skills
+
+              camera.animate(
+                {
+                  x: (skillsBbox.x1 + skillsBbox.x2) / 2,
+                  y: (skillsBbox.y1 + skillsBbox.y2) / 2,
+                  ratio: Math.min(
+                    (skillsBbox.x2 - skillsBbox.x1 + padding) /
+                      containerRef.current.offsetWidth,
+                    (skillsBbox.y2 - skillsBbox.y1 + padding) /
+                      containerRef.current.offsetHeight,
+                    0.1 // Higher zoom level to focus on skills
+                  ),
+                },
+                { duration: 800, easing: "quadInOut" }
+              );
+            } else {
+              // If no skills, just zoom to the occupation
+              camera.animate(
+                {
+                  x: attrs.x,
+                  y: attrs.y,
+                  ratio: 0.2,
+                },
+                { duration: 800, easing: "quadInOut" }
+              );
+            }
+
             const r = camera.getState().ratio;
             updateNodeSizes(r);
             toggleOccupationLabels(r);
           });
 
-          // Ensure initial view fits screen after the renderer measures the container
           requestAnimationFrame(() => {
             fitToScreen();
-            // Also set initial label state based on the (now) current ratio
             const r = camera.getState().ratio;
             toggleOccupationLabels(r);
           });
 
-          // Re-fit on container resize
           const ro = new ResizeObserver(() => {
             requestAnimationFrame(() => fitToScreen());
           });
           ro.observe(containerRef.current);
 
-          // Cleanup
           return () => {
             ro.disconnect();
             camera.off("updated", onCameraUpdated);
@@ -306,7 +292,8 @@ function GraphView() {
         }}
       >
         <strong>Interactive Network Graph</strong> — Zoom in to see occupation
-        names, zoom out to hide them. Click an occupation to toggle its skills.
+        names, zoom out to hide them. Click an occupation to toggle its skills
+        (auto-zoom enabled).
       </div>
 
       <div
@@ -318,7 +305,6 @@ function GraphView() {
         }}
       />
 
-      {/* UI overlay */}
       <div
         style={{
           position: "fixed",
