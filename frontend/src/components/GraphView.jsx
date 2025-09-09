@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import Graph from "graphology";
 import { Sigma } from "sigma";
+import forceAtlas2 from "graphology-layout-forceatlas2";
 
 const OCCUPATION_GROUPS = [
   "pet and pet food shop manager",
@@ -73,26 +74,34 @@ function GraphView() {
       // });
 
       // Add occupation nodes
-      occupationNodes.forEach((node) => {
+      const angleStep = (2 * Math.PI) / skillNodes.length;
+      const radius = 500;
+      occupationNodes.forEach((node, i) => {
+        const angle = i * angleStep;
         graph.addNode(node.id, {
           label: node.title,
           type: "circle",
           customType: node.type,
-          x: Math.random() * 1000,
-          y: Math.random() * 1000,
+          // x: Math.random() * 3000,
+          // y: Math.random() * 3000,
+          x: 0 + radius * Math.cos(angle),
+          y: 0 + radius * Math.sin(angle),
           size: 10,
           color: "#2ECC40",
+          labelColor: "#ffffff",
         });
       });
 
       // Add skill nodes
-      skillNodes.forEach((node) => {
+      skillNodes.forEach((node, i) => {
+        const angle = i * angleStep;
         graph.addNode(node.id, {
           label: node.title,
+          labelColor: "#ffffff",
           type: "circle",
           customType: node.type,
-          x: Math.random() * 1000,
-          y: Math.random() * 1000,
+          x: 0 + radius * Math.cos(angle),
+          y: 0 + radius * Math.sin(angle),
           size: 7,
           color: "#FF4136",
         });
@@ -136,6 +145,17 @@ function GraphView() {
       if (containerRef.current && isMounted) {
         sigmaInstanceRef.current = new Sigma(graph, containerRef.current);
       }
+      const settings = {
+        gravity: 10,
+        scalingRatio: 20,
+        slowDown: 10,
+      };
+
+      // Apply ForceAtlas2 layout
+      forceAtlas2.assign(graph, { iterations: 100, settings });
+
+      // Refresh Sigma to see the new layout
+      sigmaInstanceRef.current.refresh();
     }
 
     fetchData();
@@ -150,7 +170,7 @@ function GraphView() {
     <div
       ref={containerRef}
       style={{
-        height: "1200px",
+        height: "85vh",
         width: "100vw",
         border: "2px solid #333",
       }}
