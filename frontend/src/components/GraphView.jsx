@@ -1,7 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Graph from "graphology";
 import { Sigma } from "sigma";
 import forceAtlas2 from "graphology-layout-forceatlas2";
+import SideBar from "../ui/SideBar";
+import SkillDetails from "./SkillDetails";
+import OccupationDetails from "./OccupationDetails";
 
 const OCCUPATION_GROUPS = [
   "pet and pet food shop manager",
@@ -18,10 +21,20 @@ const OCCUPATION_GROUPS = [
 function GraphView() {
   const containerRef = useRef(null);
   const sigmaInstanceRef = useRef(null);
+  const graphRef = useRef(null);
+  const nodesDataRef = useRef(null);
+  const edgesDataRef = useRef(null);
+
+  // State management for selected items
+  const [selectedOccupation, setSelectedOccupation] = useState(null);
+  const [selectedSkill, setSelectedSkill] = useState(null);
+  const [selectedItemType, setSelectedItemType] = useState(null);
+
   const state = {
     hoveredNode: "",
     hoveredNodeNeighbors: "",
   };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -39,7 +52,12 @@ function GraphView() {
         res.json()
       );
 
+      // Store data in refs for click handler access
+      nodesDataRef.current = nodesRes;
+      edgesDataRef.current = edgesRes;
+
       const graph = new Graph();
+      graphRef.current = graph;
 
       // Filter group nodes by OCCUPATION_GROUPS
       const groupNodes = nodesRes.nodes.filter(
@@ -72,8 +90,7 @@ function GraphView() {
           label: node.title,
           type: "circle",
           customType: node.type,
-          // x: Math.random() * 3000,
-          // y: Math.random() * 3000,
+          title: node.title, // Store original title
           x: 0 + radius * Math.cos(angle),
           y: 0 + radius * Math.sin(angle),
           size: 10,
@@ -89,7 +106,9 @@ function GraphView() {
           label: node.title,
           labelColor: "#ffffff",
           type: "circle",
+          description: node.description,
           customType: node.type,
+          title: node.title, // Store original title
           x: 0 + radius * Math.cos(angle),
           y: 0 + radius * Math.sin(angle),
           size: 7,
@@ -128,34 +147,81 @@ function GraphView() {
           renderLabels: true,
           labelColor: { attribute: "labelColor" },
         });
-        //made an instance to get events
+
         const sigmaRenderer = sigmaInstanceRef.current;
-        //Defining the sethovered function
+
+        // Hover functionality
         function setHoveredNode(node) {
           if (node) {
             state.hoveredNode = node;
             state.hoveredNodeNeighbors = new Set(graph.neighbors(node));
-            // console.log(state.hoveredNodeNeighbors);
           }
           if (!node) {
             state.hoveredNode = undefined;
             state.hoveredNodeNeighbors = undefined;
           }
-          // Refresh rendering
           sigmaRenderer.refresh({
-            // We don't touch the graph data so we can skip its reindexation
             skipIndexation: true,
           });
         }
-        //Calling the on function/method
+
+        // Hover events
         sigmaRenderer.on("enterNode", ({ node }) => {
           setHoveredNode(node);
         });
         sigmaRenderer.on("leaveNode", ({ node }) => {
           setHoveredNode(undefined);
         });
-        //use the SetSetting method
 
+        // Click event handler
+        sigmaRenderer.on("clickNode", ({ node }) => {
+          const attrs = graph.getNodeAttributes(node);
+
+          console.log("this ----------node aattrs-------------");
+          console.log(attrs);
+
+          if (attrs.customType === "occupation") {
+            // Clear any skill selection when clicking occupation
+            setSelectedSkill(null);
+            setSelectedOccupation(attrs);
+            setSelectedItemType("occupation");
+            console.log("Selected occupation:", attrs);
+          } else if (attrs.customType === "skill") {
+            // Handle skill click
+
+            console.log("this ----------node-------------");
+            console.log(nodesDataRef.current.nodes);
+
+            const skillOccEdges = edgesDataRef.current.edges
+              .filter(
+                (edge) => edge.type === "occ_skill" && edge.target === node
+              )
+              .map((el) => el.source);
+
+            console.log(skillOccEdges);
+            console.log("this -----------------------");
+
+            const occupationNodes = nodesDataRef.current.nodes.filter(
+              (n) => n.type === "occupation"
+            );
+
+            const occupationLinkedWithSelectedSkills = occupationNodes
+              .filter((occ) => skillOccEdges.includes(occ.id))
+              .map((el) => el.title);
+
+            const attrsWithOccupation = {
+              ...attrs,
+              occupation: [...new Set(occupationLinkedWithSelectedSkills)],
+            };
+
+            setSelectedOccupation(null);
+            setSelectedSkill(attrsWithOccupation);
+            setSelectedItemType("skill");
+            console.log("Selected skill:", attrsWithOccupation);
+          }
+        });
+
+        // Node and edge reducers for hover effects
         sigmaRenderer.setSetting("nodeReducer", (node, data) => {
           if (!data) console.log("data problems");
           const nodeData = { ...data };
@@ -169,8 +235,6 @@ function GraphView() {
             nodeData.color = "#a9a9a9";
           } else {
             return nodeData;
-
-            // console.log(nodeData);
           }
           return nodeData;
         });
@@ -191,14 +255,8 @@ function GraphView() {
           }
           return res;
         });
-
-        // sigmaRenderer.setSetting("nodeReducer",(node,data)=>{
-        //   const nodeData = {...data}
-        //   if (state.hoveredNodeNeighbors&&state.hoveredNodeNeighbors.h) {
-
-        //   }
-        // })
       }
+
       const settings = {
         gravity: 10,
         scalingRatio: 20,
@@ -220,15 +278,55 @@ function GraphView() {
     };
   }, []);
 
+  // Clear selections function
+  const clearSelections = () => {
+    setSelectedOccupation(null);
+    setSelectedSkill(null);
+    setSelectedItemType(null);
+  };
+
   return (
     <div
-      ref={containerRef}
       style={{
+        display: "flex",
         height: "85vh",
-        width: "100vw",
-        border: "2px solid #333",
+        position: "relative",
+        overflow: "hidden", // Prevent scrollbars from causing layout shifts
       }}
-    />
+    >
+      {/* Graph Container */}
+      <div
+        ref={containerRef}
+        style={{
+          height: "100%",
+          width: "100%",
+          border: "2px solid #333",
+          position: "relative", // Ensure proper positioning context
+        }}
+      />
+
+      {/* Sidebar - positioned absolutely outside the graph container */}
+      {(selectedOccupation || selectedSkill) && (
+        <SideBar
+          setSelectedOccupation={setSelectedOccupation}
+          onClose={clearSelections}
+        >
+          {selectedItemType === "occupation" && selectedOccupation && (
+            <OccupationDetails
+              selectedOccupation={selectedOccupation}
+              setSelectedOccupation={setSelectedOccupation}
+              onClose={clearSelections}
+            />
+          )}
+          {selectedItemType === "skill" && selectedSkill && (
+            <SkillDetails
+              selectedSkill={selectedSkill}
+              onClose={clearSelections}
+            />
+          )}
+        </SideBar>
+      )}
+    </div>
   );
 }
 
