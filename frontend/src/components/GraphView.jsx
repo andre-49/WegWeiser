@@ -3,6 +3,7 @@ import Graph from "graphology";
 import { Sigma } from "sigma";
 import SideBar from "../ui/SideBar";
 import OccupationDetails from "../ui/OccupationDetails";
+import SkillDetails from "../ui/SkillDetails"; // New component for skill details
 
 const OCCUPATION_TITLES = [
   "pet and pet food shop manager",
@@ -25,6 +26,8 @@ function GraphView() {
   const expandedOccupationRef = useRef(null);
 
   const [selectedOccupation, setSelectedOccupation] = useState(null);
+  const [selectedSkill, setSelectedSkill] = useState(null);
+  const [selectedItemType, setSelectedItemType] = useState(null); // 'occupation' or 'skill'
 
   // Base sizes
   const baseSizes = {
@@ -34,6 +37,7 @@ function GraphView() {
 
   // Label behavior: show occupation labels when zoomed IN (ratio <= threshold)
   const OCC_LABEL_SHOW_RATIO_THRESHOLD = 1.1;
+  const SKILL_LABEL_SHOW_RATIO_THRESHOLD = 0.5; // Skills show labels when zoomed in more
 
   const fitToScreen = () => {
     const s = sigmaInstanceRef.current;
@@ -42,21 +46,26 @@ function GraphView() {
     s.refresh();
   };
 
-  const toggleOccupationLabels = (zoomRatio) => {
+  const toggleLabels = (zoomRatio) => {
     const s = sigmaInstanceRef.current;
     const g = graphRef.current;
     if (!s || !g) return;
 
-    const show = zoomRatio <= OCC_LABEL_SHOW_RATIO_THRESHOLD;
+    const showOccLabels = zoomRatio <= OCC_LABEL_SHOW_RATIO_THRESHOLD;
+    const showSkillLabels = zoomRatio <= SKILL_LABEL_SHOW_RATIO_THRESHOLD;
 
     g.forEachNode((id, attrs) => {
-      if (attrs.customType !== "occupation") return;
-
       if (typeof attrs.originalLabel === "undefined") {
         g.setNodeAttribute(id, "originalLabel", attrs.label || "");
       }
 
-      const shouldBe = show ? attrs.originalLabel || "" : "";
+      let shouldBe = "";
+      if (attrs.customType === "occupation" && showOccLabels) {
+        shouldBe = attrs.originalLabel || "";
+      } else if (attrs.customType === "skill" && showSkillLabels) {
+        shouldBe = attrs.originalLabel || "";
+      }
+
       if (attrs.label !== shouldBe) {
         g.setNodeAttribute(id, "label", shouldBe);
       }
@@ -106,6 +115,13 @@ function GraphView() {
     expandedOccupationRef.current = null;
   };
 
+  // Helper function to clear all selections
+  const clearSelections = () => {
+    setSelectedOccupation(null);
+    setSelectedSkill(null);
+    setSelectedItemType(null);
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -144,6 +160,7 @@ function GraphView() {
             label: node.title,
             originalLabel: node.title,
             customType: "occupation",
+            nodeData: node, // Store full node data
             x: Math.random() * 1000,
             y: Math.random() * 1000,
             size: baseSizes.occupation,
@@ -166,101 +183,146 @@ function GraphView() {
           const onCameraUpdated = (state) => {
             const ratio = state.ratio;
             updateNodeSizes(ratio);
-            toggleOccupationLabels(ratio);
+            toggleLabels(ratio);
           };
           camera.on("updated", onCameraUpdated);
 
           s.on("clickNode", ({ node }) => {
+            console.log(node);
             const attrs = g.getNodeAttributes(node);
-            if (attrs.customType !== "occupation") return;
+            console.log(attrs);
 
-            setSelectedOccupation(attrs); // NEW: set selected occupation
+            if (attrs.customType === "occupation") {
+              // Clear any skill selection when clicking occupation
+              setSelectedSkill(null);
+              setSelectedOccupation(attrs);
+              setSelectedItemType("occupation");
 
-            if (expandedOccupationRef.current === node) {
+              if (expandedOccupationRef.current === node) {
+                collapseAllSkills();
+                const r = camera.getState().ratio;
+                updateNodeSizes(r);
+                toggleLabels(r);
+                return;
+              }
+
               collapseAllSkills();
+
+              const { nodes, edges } = dataRef.current;
+              const occSkillEdges = edges.filter(
+                (e) => e.type === "occ_skill" && e.source === node
+              );
+
+              occSkillEdges.forEach((edge, i) => {
+                if (!g.hasNode(edge.target)) {
+                  const skillNode = nodes.find((n) => n.id === edge.target);
+                  if (!skillNode) return;
+
+                  g.addNode(skillNode.id, {
+                    label: skillNode.title,
+                    originalLabel: skillNode.title,
+                    customType: "skill",
+                    nodeData: skillNode, // Store full node data
+                    size: baseSizes.skill,
+                    color: "#FF4136",
+                    x: attrs.x + Math.random() * 50 - 25,
+                    y: attrs.y + Math.random() * 50 - 25,
+                  });
+
+                  const ek = `${edge.source}->${edge.target}-skill-${i}`;
+                  g.addEdgeWithKey(ek, edge.source, edge.target, {
+                    type: "line",
+                    label: edge.type,
+                    color: "#FF4136",
+                  });
+                }
+              });
+
+              skillsVisibleRef.current = true;
+              expandedOccupationRef.current = node;
+
+              // Focus zoom specifically on the skills area, not the occupation
+              const skillNodeIds = occSkillEdges.map((e) => e.target);
+
+              if (skillNodeIds.length > 0) {
+                // Zoom to focus on skills only
+                const skillsBbox = g.getBBox(skillNodeIds);
+                const padding = 80; // Padding around skills
+
+                camera.animate(
+                  {
+                    x: (skillsBbox.x1 + skillsBbox.x2) / 2,
+                    y: (skillsBbox.y1 + skillsBbox.y2) / 2,
+                    ratio: Math.min(
+                      (skillsBbox.x2 - skillsBbox.x1 + padding) /
+                        containerRef.current.offsetWidth,
+                      (skillsBbox.y2 - skillsBbox.y1 + padding) /
+                        containerRef.current.offsetHeight,
+                      0.1 // Higher zoom level to focus on skills
+                    ),
+                  },
+                  { duration: 800, easing: "quadInOut" }
+                );
+              } else {
+                // If no skills, just zoom to the occupation
+                camera.animate(
+                  {
+                    x: attrs.x,
+                    y: attrs.y,
+                    ratio: 0.2,
+                  },
+                  { duration: 800, easing: "quadInOut" }
+                );
+              }
+
               const r = camera.getState().ratio;
               updateNodeSizes(r);
-              toggleOccupationLabels(r);
-              return;
-            }
+              toggleLabels(r);
+            } else if (attrs.customType === "skill") {
+              // Handle skill click
+              const skillOccEdges = edgesRes.edges
+                .filter(
+                  (edge) => edge.type === "occ_skill" && edge.target === node
+                )
+                .map((el) => el.source);
+              console.log(skillOccEdges);
 
-            collapseAllSkills();
+              console.log("this -----------------------");
 
-            const { nodes, edges } = dataRef.current;
-            const occSkillEdges = edges.filter(
-              (e) => e.type === "occ_skill" && e.source === node
-            );
+              const occupationLinkedWithSelectedSkills = occupationNodes
+                .filter((occ) => skillOccEdges.includes(occ.id))
+                .map((el) => el.title);
 
-            occSkillEdges.forEach((edge, i) => {
-              if (!g.hasNode(edge.target)) {
-                const skillNode = nodes.find((n) => n.id === edge.target);
-                if (!skillNode) return;
+              const attrsWithOccupaton = {
+                ...attrs,
+                occupation: [...new Set(occupationLinkedWithSelectedSkills)],
+              };
 
-                g.addNode(skillNode.id, {
-                  label: skillNode.title,
-                  originalLabel: skillNode.title,
-                  customType: "skill",
-                  size: baseSizes.skill,
-                  color: "#FF4136",
-                  x: attrs.x + Math.random() * 50 - 25,
-                  y: attrs.y + Math.random() * 50 - 25,
-                });
+              setSelectedOccupation(null);
+              setSelectedSkill(attrsWithOccupaton);
+              setSelectedItemType("skill");
 
-                const ek = `${edge.source}->${edge.target}-skill-${i}`;
-                g.addEdgeWithKey(ek, edge.source, edge.target, {
-                  type: "line",
-                  label: edge.type,
-                  color: "#FF4136",
-                });
-              }
-            });
-
-            skillsVisibleRef.current = true;
-            expandedOccupationRef.current = node;
-
-            // Focus zoom specifically on the skills area, not the occupation
-            const skillNodeIds = occSkillEdges.map((e) => e.target);
-
-            if (skillNodeIds.length > 0) {
-              // Zoom to focus on skills only
-              const skillsBbox = g.getBBox(skillNodeIds);
-              const padding = 80; // Padding around skills
-
-              camera.animate(
-                {
-                  x: (skillsBbox.x1 + skillsBbox.x2) / 2,
-                  y: (skillsBbox.y1 + skillsBbox.y2) / 2,
-                  ratio: Math.min(
-                    (skillsBbox.x2 - skillsBbox.x1 + padding) /
-                      containerRef.current.offsetWidth,
-                    (skillsBbox.y2 - skillsBbox.y1 + padding) /
-                      containerRef.current.offsetHeight,
-                    0.1 // Higher zoom level to focus on skills
-                  ),
-                },
-                { duration: 800, easing: "quadInOut" }
-              );
-            } else {
-              // If no skills, just zoom to the occupation
+              // Optional: zoom to the skill for better focus
               camera.animate(
                 {
                   x: attrs.x,
                   y: attrs.y,
-                  ratio: 0.2,
+                  ratio: Math.min(camera.getState().ratio, 0.3), // Don't zoom out if already zoomed in
                 },
-                { duration: 800, easing: "quadInOut" }
+                { duration: 500, easing: "quadInOut" }
               );
             }
+          });
 
-            const r = camera.getState().ratio;
-            updateNodeSizes(r);
-            toggleOccupationLabels(r);
+          // Click on empty space to clear selections
+          s.on("clickStage", () => {
+            clearSelections();
           });
 
           requestAnimationFrame(() => {
             fitToScreen();
             const r = camera.getState().ratio;
-            toggleOccupationLabels(r);
+            toggleLabels(r);
           });
 
           const ro = new ResizeObserver(() => {
@@ -286,7 +348,9 @@ function GraphView() {
     };
   }, []);
 
-  console.log("Selected occupation:", selectedOccupation);
+  // console.log("Selected occupation:", selectedOccupation);
+  // console.log("Selected skill:", selectedSkill);
+  // console.log("Selected item type:", selectedItemType);
 
   return (
     <div style={{ position: "relative" }}>
@@ -299,12 +363,27 @@ function GraphView() {
           position: "relative",
         }}
       >
-        {selectedOccupation && (
-          <SideBar setSelectedOccupation={setSelectedOccupation}>
-            <OccupationDetails
-              selectedOccupation={selectedOccupation}
-              setSelectedOccupation={setSelectedOccupation}
-            />
+        {(selectedOccupation || selectedSkill) && (
+          <SideBar
+            setSelectedOccupation={setSelectedOccupation}
+            setSelectedSkill={setSelectedSkill}
+            onClose={clearSelections}
+          >
+            {selectedItemType === "occupation" && selectedOccupation && (
+              <OccupationDetails
+                selectedOccupation={selectedOccupation}
+                setSelectedOccupation={setSelectedOccupation}
+                onClose={clearSelections}
+              />
+            )}
+            {selectedItemType === "skill" && selectedSkill && (
+              <SkillDetails
+                selectedSkill={selectedSkill}
+                setSelectedSkill={setSelectedSkill}
+                onClose={clearSelections}
+                dataRef={dataRef}
+              />
+            )}
           </SideBar>
         )}
       </div>
@@ -332,6 +411,21 @@ function GraphView() {
         >
           Reset view
         </button>
+        {(selectedOccupation || selectedSkill) && (
+          <button
+            onClick={clearSelections}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              background: "#fff",
+              cursor: "pointer",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+            }}
+          >
+            Clear selection
+          </button>
+        )}
       </div>
     </div>
   );
