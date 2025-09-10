@@ -60,19 +60,6 @@ function GraphView() {
       const skillIds = new Set(occSkillEdges.map((e) => e.target));
       const skillNodes = nodesRes.nodes.filter((n) => skillIds.has(n.id));
 
-      // Add group nodes
-      // groupNodes.forEach((node) => {
-      //   graph.addNode(node.id, {
-      //     label: node.title,
-      //     type: "circle",
-      //     customType: node.type,
-      //     x: Math.random() * 1000,
-      //     y: Math.random() * 1000,
-      //     size: 14,
-      //     color: "#0074D9",
-      //   });
-      // });
-
       // Add occupation nodes
       const angleStep = (2 * Math.PI) / skillNodes.length;
       const radius = 500;
@@ -107,15 +94,6 @@ function GraphView() {
         });
       });
 
-      // Add group-occupation edges
-      // occEdges.forEach((edge) => {
-      //   graph.addEdge(edge.source, edge.target, {
-      //     type: "line",
-      //     label: edge.type,
-      //     color: "#0074D9",
-      //   });
-      // });
-
       // Add occupation-skill edges
       occSkillEdges.forEach((edge) => {
         graph.addEdge(edge.source, edge.target, {
@@ -143,7 +121,7 @@ function GraphView() {
 
       // Initialize Sigma
       if (containerRef.current && isMounted) {
-        sigmaInstanceRef.current = new Sigma(graph, containerRef.current);
+        sigmaInstanceRef.current = new Sigma(graph, containerRef.current, {renderLabels: true, labelColor: {attribute: "labelColor"}});
       }
       const settings = {
         gravity: 10,
