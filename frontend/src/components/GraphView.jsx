@@ -86,8 +86,9 @@ function GraphView() {
         default:
           break;
       }
-
+      const labelColorVar = "#ffffff";
       g.setNodeAttribute(nodeId, "size", newSize);
+      g.setNodeAttribute(nodeId, "labelColor", labelColorVar);
     });
 
     if (s) s.refresh();
@@ -128,7 +129,7 @@ function GraphView() {
         const groupNodes = nodesRes.nodes.filter(
           (n) => n.type === "group" && OCCUPATION_TITLES.includes(n.title)
         );
-        
+
         const groupIds = new Set(groupNodes.map((n) => n.id));
 
         const occEdges = edgesRes.edges.filter(
@@ -151,13 +152,17 @@ function GraphView() {
             color: "#2ECC40",
           });
         });
-
+        // renderer = new Sigma(graph, container, {
+        //   renderLabels: true,
+        //   labelColor: { attribute: "labelColor" }, // Tell Sigma to use this attribute
+        // });
         if (containerRef.current && isMounted) {
           const s = new Sigma(g, containerRef.current, {
             stagePadding: 8,
             hideLabelsOnMove: false,
             renderLabels: true,
-            labelRenderedSizeThreshold: 4,
+            labelColor: {attribute: "labelColor"},
+            labelRenderedSizeThreshold: 2,
           });
 
           sigmaInstanceRef.current = s;
