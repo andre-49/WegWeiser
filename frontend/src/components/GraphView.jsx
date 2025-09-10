@@ -18,7 +18,10 @@ const OCCUPATION_GROUPS = [
 function GraphView() {
   const containerRef = useRef(null);
   const sigmaInstanceRef = useRef(null);
-
+  const state = {
+    hoveredNode: "",
+    hoveredNodeNeighbors: "",
+  };
   useEffect(() => {
     let isMounted = true;
 
@@ -121,7 +124,80 @@ function GraphView() {
 
       // Initialize Sigma
       if (containerRef.current && isMounted) {
-        sigmaInstanceRef.current = new Sigma(graph, containerRef.current, {renderLabels: true, labelColor: {attribute: "labelColor"}});
+        sigmaInstanceRef.current = new Sigma(graph, containerRef.current, {
+          renderLabels: true,
+          labelColor: { attribute: "labelColor" },
+        });
+        //made an instance to get events
+        const sigmaRenderer = sigmaInstanceRef.current;
+        //Defining the sethovered function
+        function setHoveredNode(node) {
+          if (node) {
+            state.hoveredNode = node;
+            state.hoveredNodeNeighbors = new Set(graph.neighbors(node));
+            // console.log(state.hoveredNodeNeighbors);
+          }
+          if (!node) {
+            state.hoveredNode = undefined;
+            state.hoveredNodeNeighbors = undefined;
+          }
+          // Refresh rendering
+          sigmaRenderer.refresh({
+            // We don't touch the graph data so we can skip its reindexation
+            skipIndexation: true,
+          });
+        }
+        //Calling the on function/method
+        sigmaRenderer.on("enterNode", ({ node }) => {
+          setHoveredNode(node);
+        });
+        sigmaRenderer.on("leaveNode", ({ node }) => {
+          setHoveredNode(undefined);
+        });
+        //use the SetSetting method
+
+        sigmaRenderer.setSetting("nodeReducer", (node, data) => {
+          if (!data) console.log("data problems");
+          const nodeData = { ...data };
+
+          if (
+            state.hoveredNode !== node &&
+            state.hoveredNodeNeighbors &&
+            !state.hoveredNodeNeighbors.has(node)
+          ) {
+            nodeData.label = "";
+            nodeData.color = "#a9a9a9";
+          } else {
+            return nodeData;
+
+            // console.log(nodeData);
+          }
+          return nodeData;
+        });
+
+        sigmaRenderer.setSetting("edgeReducer", (edge, data) => {
+          const res = { ...data };
+          if (
+            state.hoveredNode &&
+            !graph
+              .extremities(edge)
+              .every(
+                (n) =>
+                  n === state.hoveredNode ||
+                  graph.areNeighbors(n, state.hoveredNode)
+              )
+          ) {
+            res.hidden = true;
+          }
+          return res;
+        });
+
+        // sigmaRenderer.setSetting("nodeReducer",(node,data)=>{
+        //   const nodeData = {...data}
+        //   if (state.hoveredNodeNeighbors&&state.hoveredNodeNeighbors.h) {
+
+        //   }
+        // })
       }
       const settings = {
         gravity: 10,
