@@ -1,4 +1,4 @@
-import { useOutsideClick } from "../hooks/useOutSideClick";
+import { useOutsideClick } from "../hooks/useOutsideClick";
 
 const SideBar = ({ onClose, children }) => {
   const ref = useOutsideClick(() => onClose());
