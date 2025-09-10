@@ -3,7 +3,7 @@ export const ControlPanel = ({ COLORS, resetView }) => (
   <div
     style={{
       position: "absolute",
-      bottom: "20px",
+      bottom: "21px",
       right: "20px",
       display: "flex",
       flexDirection: "column",
