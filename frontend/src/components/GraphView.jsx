@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Graph from "graphology";
 import { Sigma } from "sigma";
 import forceAtlas2 from "graphology-layout-forceatlas2";
@@ -22,7 +22,6 @@ function GraphView() {
     hoveredNode: "",
     hoveredNodeNeighbors: "",
   };
-  // const hoverStates = useState(state);
   useEffect(() => {
     let isMounted = true;
 
@@ -162,18 +161,20 @@ function GraphView() {
           const nodeData = { ...data };
 
           if (
+            state.hoveredNode !== node &&
             state.hoveredNodeNeighbors &&
-            state.hoveredNodeNeighbors.has(node) &&
-            state.hoveredNode !== node
+            !state.hoveredNodeNeighbors.has(node)
           ) {
-            return nodeData;
-          } else {
             nodeData.label = "";
-            nodeData.color = "#0000";
+            nodeData.color = "#a9a9a9";
+          } else {
+            return nodeData;
+
             // console.log(nodeData);
           }
           return nodeData;
         });
+
         sigmaRenderer.setSetting("edgeReducer", (edge, data) => {
           const res = { ...data };
           if (
