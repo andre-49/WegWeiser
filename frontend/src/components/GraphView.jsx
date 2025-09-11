@@ -93,9 +93,9 @@ function GraphView() {
           title: node.title, // Store original title
           x: 0 + radius * Math.cos(angle),
           y: 0 + radius * Math.sin(angle),
-          size: 10,
-          color: "#2ECC40",
-          labelColor: "#ffffff",
+          size: 7,
+          color: "#647FBC",
+          labelColor: "#000",
         });
       });
 
@@ -104,15 +104,15 @@ function GraphView() {
         const angle = i * angleStep;
         graph.addNode(node.id, {
           label: node.title,
-          labelColor: "#ffffff",
+          labelColor: "#000",
           type: "circle",
           description: node.description,
           customType: node.type,
           title: node.title, // Store original title
           x: 0 + radius * Math.cos(angle),
           y: 0 + radius * Math.sin(angle),
-          size: 7,
-          color: "#FF4136",
+          size: 5,
+          color: "#DC143C",
         });
       });
 
@@ -121,7 +121,9 @@ function GraphView() {
         graph.addEdge(edge.source, edge.target, {
           type: "line",
           label: edge.type,
-          color: "#2ECC40",
+          color: "#3396D3",
+          originalColor: "#91ADC8",
+          size: 2.5,
         });
       });
 
@@ -137,7 +139,9 @@ function GraphView() {
           graph.addEdge(edge.source, edge.target, {
             type: "line",
             label: edge.type,
-            color: "#FF4136",
+            color: "#A9A9A9",
+            originalColor: "#F75270",
+            size: 1.5,
           });
         });
 
@@ -232,39 +236,43 @@ function GraphView() {
             !state.hoveredNodeNeighbors.has(node)
           ) {
             nodeData.label = "";
-            nodeData.color = "#a9a9a9";
+            nodeData.color = "#A9A9A9";
           } else {
             return nodeData;
           }
+
           return nodeData;
         });
 
         sigmaRenderer.setSetting("edgeReducer", (edge, data) => {
           const res = { ...data };
-          if (
-            state.hoveredNode &&
-            !graph
-              .extremities(edge)
-              .every(
-                (n) =>
-                  n === state.hoveredNode ||
-                  graph.areNeighbors(n, state.hoveredNode)
-              )
-          ) {
-            res.hidden = true;
+
+          if (state.hoveredNode) {
+            const [source, target] = graph.extremities(edge);
+
+            // Connected edges → restore originalColor
+            if (source === state.hoveredNode || target === state.hoveredNode) {
+              res.color = data.originalColor;
+            } else {
+              res.color = "#A9A9A9"; // unrelated edges gray out
+            }
+          } else {
+            // No hover → reset to original color
+            res.color = data.originalColor;
           }
+
           return res;
         });
       }
 
       const settings = {
-        gravity: 10,
+        gravity: 0.1,
         scalingRatio: 20,
         slowDown: 10,
       };
 
       // Apply ForceAtlas2 layout
-      forceAtlas2.assign(graph, { iterations: 100, settings });
+      forceAtlas2.assign(graph, { iterations: 49, settings });
 
       // Refresh Sigma to see the new layout
       sigmaInstanceRef.current.refresh();
@@ -289,7 +297,7 @@ function GraphView() {
     <div
       style={{
         display: "flex",
-        height: "85vh",
+        height: "90vh",
         position: "relative",
         overflow: "hidden", // Prevent scrollbars from causing layout shifts
       }}
@@ -300,7 +308,7 @@ function GraphView() {
         style={{
           height: "100%",
           width: "100%",
-          border: "2px solid #333",
+          border: "2px #333",
           position: "relative", // Ensure proper positioning context
         }}
       />
