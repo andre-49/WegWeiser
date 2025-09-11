@@ -96,6 +96,7 @@ function GraphView() {
     const occupationIds = new Set(occEdges.map((e) => e.target));
     const occupationNodes = nodes.nodes.filter((n) => occupationIds.has(n.id));
 
+    console.log(occupationNodes);
     const occSkillEdges = edges.edges.filter(
       (e) => e.type === "occ_skill" && occupationIds.has(e.source)
     );
@@ -135,6 +136,7 @@ function GraphView() {
         label: node.title,
         type: "circle",
         customType: node.type,
+        description: node.description,
         title: node.title,
         x: radius * Math.cos(angle),
         y: radius * Math.sin(angle),

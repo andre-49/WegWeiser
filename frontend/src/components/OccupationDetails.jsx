@@ -23,10 +23,7 @@ const OccupationDetails = ({ selectedOccupation, setSelectedOccupation }) => {
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         <p className="text-gray-700 leading-relaxed">
-          Lorem ipsum, dolor sit amet consectetur adipisicing elit. Similique
-          deserunt voluptatibus itaque eos corporis odio a officia repellendus
-          totam dolorum? Ab suscipit aliquid possimus sed praesentium eum rerum
-          itaque! Libero.
+          {selectedOccupation?.description || "No description available."}
         </p>
       </div>
     </>
