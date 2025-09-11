@@ -256,6 +256,72 @@ function GraphView() {
       const shouldShow = extremities.every(
         (n) => n === hoveredNode || graph.areNeighbors(n, hoveredNode)
       );
+      const skillIds = new Set(occSkillEdges.map((e) => e.target));
+      const skillNodes = nodesRes.nodes.filter((n) => skillIds.has(n.id));
+
+      // Add occupation nodes
+      const angleStep = (2 * Math.PI) / skillNodes.length;
+      const radius = 500;
+      occupationNodes.forEach((node, i) => {
+        const angle = i * angleStep;
+        graph.addNode(node.id, {
+          label: node.title,
+          type: "circle",
+          customType: node.type,
+          title: node.title, // Store original title
+          x: 0 + radius * Math.cos(angle),
+          y: 0 + radius * Math.sin(angle),
+          size: 7,
+          color: "#647FBC",
+          labelColor: "#000",
+        });
+      });
+
+      // Add skill nodes
+      skillNodes.forEach((node, i) => {
+        const angle = i * angleStep;
+        graph.addNode(node.id, {
+          label: node.title,
+          labelColor: "#000",
+          type: "circle",
+          description: node.description,
+          customType: node.type,
+          title: node.title, // Store original title
+          x: 0 + radius * Math.cos(angle),
+          y: 0 + radius * Math.sin(angle),
+          size: 5,
+          color: "#DC143C",
+        });
+      });
+
+      // Add occupation-skill edges
+      occSkillEdges.forEach((edge) => {
+        graph.addEdge(edge.source, edge.target, {
+          type: "line",
+          label: edge.type,
+          color: "#3396D3",
+          originalColor: "#91ADC8",
+          size: 2.5,
+        });
+      });
+
+      // Add skill-skill edges between selected skills
+      edgesRes.edges
+        .filter(
+          (e) =>
+            e.type === "skill_skill" &&
+            skillIds.has(e.source) &&
+            skillIds.has(e.target)
+        )
+        .forEach((edge) => {
+          graph.addEdge(edge.source, edge.target, {
+            type: "line",
+            label: edge.type,
+            color: "#A9A9A9",
+            originalColor: "#F75270",
+            size: 1.5,
+          });
+        });
       if (!shouldShow) {
         res.hidden = true;
       }
@@ -310,22 +376,54 @@ function GraphView() {
         nodesDataRef.current = data.nodes;
         edgesDataRef.current = data.edges;
 
-        const processedData = processGraphData(data);
-        const graph = createGraph(processedData);
+        // Node and edge reducers for hover effects
+        sigmaRenderer.setSetting("nodeReducer", (node, data) => {
+          if (!data) console.log("data problems");
+          const nodeData = { ...data };
 
-        graphRef.current = graph;
+          if (
+            state.hoveredNode !== node &&
+            state.hoveredNodeNeighbors &&
+            !state.hoveredNodeNeighbors.has(node)
+          ) {
+            nodeData.label = "";
+            nodeData.color = "#A9A9A9";
+          } else {
+            return nodeData;
+          }
 
-        // Apply layout
-        const layoutSettings = {
-          gravity: 10,
-          scalingRatio: 20,
-          slowDown: 10,
-        };
-
-        forceAtlas2.assign(graph, {
-          iterations: 100,
-          settings: layoutSettings,
+          return nodeData;
         });
+
+        sigmaRenderer.setSetting("edgeReducer", (edge, data) => {
+          const res = { ...data };
+
+          if (state.hoveredNode) {
+            const [source, target] = graph.extremities(edge);
+
+            // Connected edges → restore originalColor
+            if (source === state.hoveredNode || target === state.hoveredNode) {
+              res.color = data.originalColor;
+            } else {
+              res.color = "#A9A9A9"; // unrelated edges gray out
+            }
+          } else {
+            // No hover → reset to original color
+            res.color = data.originalColor;
+          }
+
+          return res;
+        });
+      }
+
+      const settings = {
+        gravity: 0.1,
+        scalingRatio: 20,
+        slowDown: 10,
+      };
+
+      // Apply ForceAtlas2 layout
+      forceAtlas2.assign(graph, { iterations: 49, settings });
 
         // Initialize Sigma
         const sigma = initializeSigma(graph);
@@ -406,7 +504,7 @@ function GraphView() {
     <div
       style={{
         display: "flex",
-        height: "85vh",
+        height: "90vh",
         position: "relative",
         overflow: "hidden",
       }}
@@ -417,9 +515,8 @@ function GraphView() {
         style={{
           height: "100%",
           width: "100%",
-          border: "2px solid #333",
-          position: "relative",
-          backgroundColor: "#1a1a1a", // Dark background for better contrast
+          border: "2px #333",
+          position: "relative", // Ensure proper positioning context
         }}
       />
 

@@ -1,4 +1,4 @@
-import { useOutsideClick } from "../hooks/useOutSideClick";
+import { useOutsideClick } from "../hooks/useOutsideClick";
 
 const SideBar = ({ onClose, children }) => {
   const ref = useOutsideClick(() => onClose());
@@ -6,7 +6,7 @@ const SideBar = ({ onClose, children }) => {
   return (
     <div
       ref={ref}
-      className="absolute left-0 w-[400px] h-screen  overflow-scroll bg-gray-400 z-50 p-7"
+      className="absolute left-0 w-[400px] h-screen  overflow-scroll bg-[#A9A9A9] z-50 p-7"
     >
       {children}
     </div>

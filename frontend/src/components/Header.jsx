@@ -60,7 +60,7 @@ const Header = () => {
   };
 
   return (
-    <div className="flex flex-col md:flex-row justify-between items-center p-4 text-white">
+    <div className="flex flex-col md:flex-row justify-between items-center p-4 text-white bg-[#44444E]">
       <div className="flex items-center space-x-2 mb-2 md:mb-0">
         <FaPhoenixFramework size={70} />
         <div
@@ -71,7 +71,7 @@ const Header = () => {
             <span className="text-3xl font-normal">W</span>
             <span>EG</span>
             <span className="text-3xl font-normal">W</span>
-            <span className="text-3xl font-normal">EISER</span>
+            <span className="text-2xl font-normal">EISER</span>
           </span>
         </div>
       </div>
